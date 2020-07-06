@@ -131,8 +131,157 @@ parse_date("2020/10/01")
 # Use hms package for parse_time
 # parse_time() expects 'hour:minutes[:seconds] [am/AM/pm/PM]'
 library("hms")
+parse_time("01:10")
+# 01:10:00
 parse_time("01:10 PM")
+# 13:10:00
 parse_time("01:10:05 PM")
+# 13:10:05
 parse_time("01:10:05")
+# 01:10:05
 parse_time("13:10:05")
-parse_time("1:10:05")
+# 13:10:05
+
+parse_date("01/02/15", "%m/%d/%y")
+#> [1] "2015-01-02"
+parse_date("01/02/15", "%d/%m/%y")
+#> [1] "2015-02-01"
+parse_date("01/02/15", "%y/%m/%d")
+#> [1] "2001-02-15"
+parse_date("2020-07-05", "%Y-%m-%d")
+# [1] "2020-07-05"
+
+parse_datetime("2020-07-05 06:05 PM", "%Y-%m-%d %I:%M %p")
+# [1] "2020-07-05 18:05:00 UTC"
+
+# Find current timezone
+Sys.timezone()
+# [1] "America/New_York"
+
+# Get all timezones
+OlsonNames()
+
+# Unless otherwise specified, lubridate always uses UTC. UTC (Coordinated
+# Universal Time) is the standard time zone used by the scientific community and
+# roughly equivalent to its predecessor GMT (Greenwich Mean Time). It does not
+# have DST, which makes a convenient representation for computation.
+library("lubridate")
+x1 = ymd_hms("2015-06-01 12:00:00", tz = "America/New_York")
+#> [1] "2015-06-01 12:00:00 EDT"
+ymd_hms("2015-07-05 06:14:00 PM", tz = "America/New_York")
+# [1] "2015-07-05 18:14:00 EDT"
+x2 <- ymd_hms("2015-06-01 18:00:00", tz = "Europe/Copenhagen")
+#> [1] "2015-06-01 18:00:00 CEST"
+x3 <- ymd_hms("2015-06-02 04:00:00", tz = "Pacific/Auckland")
+#> [1] "2015-06-02 04:00:00 NZST"
+
+# Section 11.4 - Parsing a file readr uses a heuristic to figure out the type of
+# each column: it reads the first 1000 rows and uses some (moderately
+# conservative) heuristics to figure out the type of each column. You can
+# emulate this process with a character vector using guess_parser(), which
+# returns readr’s best guess, and parse_guess() which uses that guess to parse
+# the column:
+# The heuristic tries each of the following types, stopping when it finds a match:
+#
+# logical: contains only “F”, “T”, “FALSE”, or “TRUE”.
+# integer: contains only numeric characters (and -).
+# double: contains only valid doubles (including numbers like 4.5e-5).
+# number: contains valid doubles with the grouping mark inside.
+# time: matches the default time_format.
+# date: matches the default date_format.
+# date-time: any ISO8601 date.
+# If none of these rules apply, then the column will stay as a vector of strings.
+
+# Example of a failure of read_csv strategy
+# The first 1,000 lines of 2nd column are only NA, so guess is logical vector
+# However, starting at row 1001, the values are dates
+challenge <- read_csv(readr_example("challenge.csv"))
+problems(challenge)
+
+# Change y column to parse as date
+challenge <- read_csv(
+	readr_example("challenge.csv"),
+	col_types = cols(
+		x = col_double(),
+		y = col_date()
+	)
+)
+# Every parse_xyz() function has a corresponding col_xyz() function. You use
+# parse_xyz() when the data is in a character vector in R already; you use
+# col_xyz() when you want to tell readr how to load the data.
+
+# If you want to be really strict, use stop_for_problems(): that will throw an
+# error and stop your script if there are any parsing problems.
+stop_for_problems(challenge)
+
+# Strategies to help with reading data in
+# Strategy 1 - increase number of rows to sample (default is 1,000)
+challenge2 <- read_csv(readr_example("challenge.csv"), guess_max = 1001)
+#> Parsed with column specification:
+#> cols(
+#>   x = col_double(),
+#>   y = col_date(format = "")
+#> )
+challenge2
+#> # A tibble: 2,000 x 2
+#>       x y
+#>   <dbl> <date>
+#> 1   404 NA
+#> 2  4172 NA
+#> 3  3004 NA
+#> 4   787 NA
+#> 5    37 NA
+#> 6  2332 NA
+#> # … with 1,994 more rows
+
+# Strategy 2 - first read in the columns as character vectors and then
+# manually try to parse each column
+challenge2 <- read_csv(readr_example("challenge.csv"),
+											 col_types = cols(.default = col_character())
+)
+type_convert(challenge2)
+
+# Can also read as a character vector of lines with read_lines() or
+# or character vector of length 1 with read_file()
+
+# Section 11.5 - writing files
+# Three options:
+#  write_csv()
+#  write_tsv()
+#  write_excel_csv() - contains a byte-order mark specifying to Excel that
+#                      this is using UTF-8 encoding
+write_csv(x = challenge2, path = "challenge2.csv")
+write_tsv(x = challenge2, path = "challenge2.tsv")
+write_excel_csv(x = challenge2, path = "challenge2_excel.csv")
+
+# In order to write and store temporary files, can use write_rds() and
+# read_rds(), which are wrappers around readRDS() and saveRDS() and utilize
+# R custom binary format
+
+# feather package - fast binary format supported across different programming
+# languages
+library(feather)
+write_feather(challenge, "challenge.feather")
+read_feather("challenge.feather")
+
+# Feather tends to be faster than RDS and is usable outside of R. RDS supports
+# list-columns (which you’ll learn about in many models); feather currently does
+# not.
+
+# Section 11.6 - Other types of data
+# To get other types of data into R, we recommend starting with the tidyverse
+# packages listed below. They’re certainly not perfect, but they are a good
+# place to start. For rectangular data:
+#
+# haven reads SPSS, Stata, and SAS files.
+#
+# readxl reads excel files (both .xls and .xlsx).
+#
+# DBI, along with a database specific backend (e.g. RMySQL, RSQLite, RPostgreSQL
+# etc) allows you to run SQL queries against a database and return a data frame.
+#
+# For hierarchical data: use jsonlite (by Jeroen Ooms) for json, and xml2 for
+# XML. Jenny Bryan has some excellent worked examples at
+# https://jennybc.github.io/purrr-tutorial/.
+#
+# For other file types, try the R data import/export manual and the rio package.
